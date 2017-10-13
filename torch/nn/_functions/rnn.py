@@ -26,7 +26,10 @@ def LSTMCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
         hgates = F.linear(hidden[0], w_hh)
         state = fusedBackend.LSTMFused()
         return state(igates, hgates, hidden[1]) if b_ih is None else state(igates, hgates, hidden[1], b_ih, b_hh)
+    return LSTMUnfusedCell(input, hidden, w_ih, w_hh, b_ih, b_hh)
 
+
+def LSTMUnfusedCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
     hx, cx = hidden
     gates = F.linear(input, w_ih, b_ih) + F.linear(hx, w_hh, b_hh)
 
@@ -50,7 +53,10 @@ def GRUCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
         gh = F.linear(hidden, w_hh)
         state = fusedBackend.GRUFused()
         return state(gi, gh, hidden) if b_ih is None else state(gi, gh, hidden, b_ih, b_hh)
+    return GRUUnfusedCell(input, hidden, w_ih, w_hh, b_ih, b_hh)
 
+
+def GRUUnfusedCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
     gi = F.linear(input, w_ih, b_ih)
     gh = F.linear(hidden, w_hh, b_hh)
     i_r, i_i, i_n = gi.chunk(3, 1)
@@ -208,16 +214,16 @@ def VariableRecurrentReverse(batch_sizes, inner):
 
 def AutogradRNN(mode, input_size, hidden_size, num_layers=1, batch_first=False,
                 dropout=0, train=True, bidirectional=False, batch_sizes=None,
-                dropout_state=None, flat_weight=None):
+                dropout_state=None, flat_weight=None, fused=True):
 
     if mode == 'RNN_RELU':
         cell = RNNReLUCell
     elif mode == 'RNN_TANH':
         cell = RNNTanhCell
     elif mode == 'LSTM':
-        cell = LSTMCell
+        cell = LSTMCell if fused else LSTMUnfusedCell
     elif mode == 'GRU':
-        cell = GRUCell
+        cell = GRUCell if fused else GRUUnfusedCell
     else:
         raise Exception('Unknown mode: {}'.format(mode))
 
@@ -255,7 +261,8 @@ class CudnnRNN(NestedIOFunction):
 
     def __init__(self, mode, input_size, hidden_size, num_layers=1,
                  batch_first=False, dropout=0, train=True, bidirectional=False,
-                 batch_sizes=None, dropout_state=None, flat_weight=None):
+                 batch_sizes=None, dropout_state=None, flat_weight=None,
+                 fused=True):
         super(CudnnRNN, self).__init__()
         if dropout_state is None:
             dropout_state = {}
@@ -344,7 +351,7 @@ class CudnnRNN(NestedIOFunction):
 
 def RNN(*args, **kwargs):
     def forward(input, *fargs, **fkwargs):
-        if cudnn.is_acceptable(input.data):
+        if cudnn.is_acceptable(input.data) and kwargs.get('fused', True):
             func = CudnnRNN(*args, **kwargs)
         else:
             func = AutogradRNN(*args, **kwargs)

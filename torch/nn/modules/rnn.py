@@ -11,7 +11,7 @@ class RNNBase(Module):
 
     def __init__(self, mode, input_size, hidden_size,
                  num_layers=1, bias=True, batch_first=False,
-                 dropout=0, bidirectional=False):
+                 dropout=0, bidirectional=False, fused=True):
         super(RNNBase, self).__init__()
         self.mode = mode
         self.input_size = input_size
@@ -22,6 +22,7 @@ class RNNBase(Module):
         self.dropout = dropout
         self.dropout_state = {}
         self.bidirectional = bidirectional
+        self.fused = fused
         num_directions = 2 if bidirectional else 1
 
         if mode == 'LSTM':
@@ -155,7 +156,8 @@ class RNNBase(Module):
             bidirectional=self.bidirectional,
             batch_sizes=batch_sizes,
             dropout_state=self.dropout_state,
-            flat_weight=flat_weight
+            flat_weight=flat_weight,
+            fused=self.fused,
         )
         output, hidden = func(input, self.all_weights, hx)
         if is_packed:
@@ -318,6 +320,8 @@ class LSTM(RNNBase):
         dropout: If non-zero, introduces a dropout layer on the outputs of each
             RNN layer except the last layer
         bidirectional: If True, becomes a bidirectional RNN. Default: False
+        fused: If True, try to use GPU-accelerated version if possible (faster
+            but cannot compute second order derivative).  Default: True
 
     Inputs: input, (h_0, c_0)
         - **input** (seq_len, batch, input_size): tensor containing the features
@@ -395,6 +399,8 @@ class GRU(RNNBase):
         dropout: If non-zero, introduces a dropout layer on the outputs of each
             RNN layer except the last layer
         bidirectional: If True, becomes a bidirectional RNN. Default: False
+        fused: If True, try to use GPU-accelerated version if possible (faster
+            but cannot compute second order derivative).  Default: True
 
     Inputs: input, h_0
         - **input** (seq_len, batch, input_size): tensor containing the features
